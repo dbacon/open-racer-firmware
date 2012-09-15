@@ -615,8 +615,8 @@ int main(void) {
 			//led2on();
 		} else {
 			//led2off();
-			motor_drive_forward(0);
-			motor_steer_left(0);
+			motor_drive_set_velocity(0);
+			motor_steer_set_velocity(0);
 		}
 
 
@@ -659,8 +659,8 @@ int main(void) {
 
 		if (battlevel < battlowthreshold) {
 			if (battwarntogglestate) led3on(); else led3off();
-			motor_drive_forward(0);
-			motor_steer_left(0);
+			motor_drive_set_velocity(0);
+			motor_steer_set_velocity(0);
 		}
 
 
