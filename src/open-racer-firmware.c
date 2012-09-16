@@ -446,6 +446,38 @@ static void handle_char(uint8_t command) {
 	}
 }
 
+static uint8_t battlevel = 11;
+
+static void batt_sample() {
+	uint8_t battsample = ADCH;
+
+	// need to scale 142+0..142+48 -> 0..255, so *5
+	battsample -= 142;
+	if (battsample < 0) battsample = 0;
+	battsample *= 5;
+	if (battsample > 255) battsample = 255;
+
+	battlevel = battsample;
+}
+
+static uint8_t batt_low_consistently(uint8_t threshold) {
+	uint8_t warn = 0;
+	uart_send("batt long check:");
+	for (uint8_t i = 0; i < 20; ++i) {
+
+		delay_100us(10);
+		batt_sample();
+
+		if (battlevel < threshold) {
+			uart_send(" batt="); uart_sendint(battlevel);
+			warn++;
+		}
+	}
+	uart_send(" done.\n");
+
+	return warn > 17;
+}
+
 
 #define battlowthreshold (10)
 
@@ -454,14 +486,13 @@ static void handle_char(uint8_t command) {
 //uint8_t breathedirection = 1;
 
 #define voltagedisplaytoggleperiodlength  (200)
-uint8_t voltagedisplaytogglecountdown = 10;
-uint8_t voltagedisplaytogglestate = 0;
+static uint8_t voltagedisplaytogglecountdown = 10;
+static uint8_t voltagedisplaytogglestate = 0;
 
 #define battwarntoggleperiodlength (20)
-uint8_t battwarntogglecountdown = 0;
-uint8_t battwarntogglestate = 0;
+static uint8_t battwarntogglecountdown = 0;
+static uint8_t battwarntogglestate = 0;
 // assume at least more than warning-threshold until 1st sample
-uint8_t battlevel = 11;
 
 #define mainloopdelay (40)
 
@@ -636,14 +667,7 @@ int main(void) {
 		}
 
 		if (voltagedisplaytogglestate) {
-			uint8_t battsample = ADCH;
-
-			// need to scale 142+0..142+48 -> 0..255, so *5
-			battsample -= 142;
-			if (battsample < 0) battsample = 0;
-			battsample *= 5;
-			if (battsample > 255) battsample = 255;
-			battlevel = battsample;
+			batt_sample();
 
 			OCR2B = 0xff - battlevel;
 		} else {
@@ -658,9 +682,12 @@ int main(void) {
 		}
 
 		if (battlevel < battlowthreshold) {
-			if (battwarntogglestate) led3on(); else led3off();
-			motor_drive_set_velocity(0);
-			motor_steer_set_velocity(0);
+			uart_send("batt="); uart_sendint(battlevel); uart_sendch('\n');
+			if (batt_low_consistently(battlowthreshold)) {
+				if (battwarntogglestate) led3on(); else led3off();
+				motor_drive_set_velocity(0);
+				motor_steer_set_velocity(0);
+			}
 		}
 
 
