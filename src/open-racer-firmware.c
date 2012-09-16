@@ -397,6 +397,59 @@ static void bluetooth_setname(char *name)
 	}
 }
 
+#define DAGU_DIR_0_STOP_STRAIGHT  (0)
+#define DAGU_DIR_1_FORW_STRAIGHT  (1)
+#define DAGU_DIR_2_BACK_STRAIGHT  (2)
+#define DAGU_DIR_3_STOP_LEFT      (3)
+#define DAGU_DIR_4_STOP_RIGHT     (4)
+#define DAGU_DIR_5_FORW_LEFT      (5)
+#define DAGU_DIR_6_FORW_RIGHT     (6)
+#define DAGU_DIR_7_BACK_LEFT      (7)
+#define DAGU_DIR_8_BACK_RIGHT     (8)
+
+static void handle_char_compat_dagu(uint8_t command) {
+	uint8_t speed = 105 + (command & 0x0f) * 1;
+	uint8_t direction = (command & 0xf0) >> 4;
+
+	switch (direction) {
+	case DAGU_DIR_0_STOP_STRAIGHT:
+		motor_steer_set_velocity(0);
+		motor_drive_set_velocity(0);
+		break;
+	case DAGU_DIR_1_FORW_STRAIGHT:
+		motor_steer_set_velocity(0);
+		motor_drive_set_velocity(speed);
+		break;
+	case DAGU_DIR_2_BACK_STRAIGHT:
+		motor_steer_set_velocity(0);
+		motor_drive_set_velocity(-speed);
+		break;
+	case DAGU_DIR_3_STOP_LEFT:
+		motor_steer_set_velocity(-255);
+		motor_drive_set_velocity(0);
+		break;
+	case DAGU_DIR_4_STOP_RIGHT:
+		motor_steer_set_velocity(255);
+		motor_drive_set_velocity(0);
+		break;
+	case DAGU_DIR_5_FORW_LEFT:
+		motor_steer_set_velocity(-255);
+		motor_drive_set_velocity(speed);
+		break;
+	case DAGU_DIR_6_FORW_RIGHT:
+		motor_steer_set_velocity(255);
+		motor_drive_set_velocity(speed);
+		break;
+	case DAGU_DIR_7_BACK_LEFT:
+		motor_steer_set_velocity(-255);
+		motor_drive_set_velocity(-speed);
+		break;
+	case DAGU_DIR_8_BACK_RIGHT:
+		motor_steer_set_velocity(255);
+		motor_drive_set_velocity(-speed);
+		break;
+	}
+}
 
 static void handle_char(uint8_t command) {
 
@@ -656,7 +709,8 @@ int main(void) {
 			uint8_t command = uart_getch();
 			led4off();
 
-			handle_char(command);
+//			handle_char(command);
+			handle_char_compat_dagu(command);
 		}
 
 
