@@ -356,7 +356,6 @@ static void motor_drive_set_velocity(int16_t newvelocity) {
 	if (newvelocity > 255) newvelocity = 255;
 	if (newvelocity < -255) newvelocity = -255;
 	velocity = newvelocity;
-	uart_send("drive="); uart_sendint(velocity); uart_sendch('\n');
 	if (velocity >= 0) {
 		motor_drive_forward(velocity & 0xff);
 	} else {
@@ -371,7 +370,6 @@ static void motor_steer_set_velocity(int16_t newsteerposition) {
 	if (newsteerposition > 255) newsteerposition = 255;
 	if (newsteerposition < -255) newsteerposition = -255;
 	steerposition = newsteerposition;
-	uart_send("steer="); uart_sendint(steerposition); uart_sendch('\n');
 	if (steerposition >= 0) {
 		motor_steer_right(steerposition & 0xff);
 	} else {
@@ -397,61 +395,108 @@ static void bluetooth_setname(char *name)
 	}
 }
 
-#define DAGU_DIR_0_STOP_STRAIGHT  (0)
-#define DAGU_DIR_1_FORW_STRAIGHT  (1)
-#define DAGU_DIR_2_BACK_STRAIGHT  (2)
-#define DAGU_DIR_3_STOP_LEFT      (3)
-#define DAGU_DIR_4_STOP_RIGHT     (4)
-#define DAGU_DIR_5_FORW_LEFT      (5)
-#define DAGU_DIR_6_FORW_RIGHT     (6)
-#define DAGU_DIR_7_BACK_LEFT      (7)
-#define DAGU_DIR_8_BACK_RIGHT     (8)
+typedef void (*protohandler_t)(uint8_t);
+
+static void handle_char_compat_dagu(uint8_t command);
+static void handle_char_protocol_1(uint8_t command);
+
+static protohandler_t handler = &handle_char_compat_dagu;
+
+static uint8_t battlevel;
+
+
+#define DAGU_DIR_0_STOP_STRAIGHT	(0x0)
+#define DAGU_DIR_1_FORW_STRAIGHT	(0x1)
+#define DAGU_DIR_2_BACK_STRAIGHT	(0x2)
+#define DAGU_DIR_3_STOP_LEFT		(0x3)
+#define DAGU_DIR_4_STOP_RIGHT		(0x4)
+#define DAGU_DIR_5_FORW_LEFT		(0x5)
+#define DAGU_DIR_6_FORW_RIGHT		(0x6)
+#define DAGU_DIR_7_BACK_LEFT		(0x7)
+#define DAGU_DIR_8_BACK_RIGHT		(0x8)
+#define DAGU_DIR_F_EXT_ESCAPE		(0xf)
+
+// The value for DAGU_EXT_REPORT is chosen to be the same as
+// DAGU_DIR_0_STOP_STRAIGHT control byte so that it is harmless if
+// sent to a car running the original firmware not supporting the
+// extension escape byte.  No other escape+extension sequence
+// should be attempted unless a response from the DAGU_EXT_REPORT
+// reports capability to do so.
+#define DAGU_EXT_REPORT				(0x00)
+
+#define DAGU_EXT_PROTOCOL_SWITCH_1	(0x01)
+#define DAGU_EXT_PROTOCOL_Q_BATT	(0x02)
+
+
+static uint8_t escaped = 0;
 
 static void handle_char_compat_dagu(uint8_t command) {
-	uint8_t speed = 105 + (command & 0x0f) * 1;
-	uint8_t direction = (command & 0xf0) >> 4;
+	if (!escaped) {
+		uint8_t speed = 105 + (command & 0x0f) * 1;
+		uint8_t direction = (command & 0xf0) >> 4;
 
-	switch (direction) {
-	case DAGU_DIR_0_STOP_STRAIGHT:
-		motor_steer_set_velocity(0);
-		motor_drive_set_velocity(0);
-		break;
-	case DAGU_DIR_1_FORW_STRAIGHT:
-		motor_steer_set_velocity(0);
-		motor_drive_set_velocity(speed);
-		break;
-	case DAGU_DIR_2_BACK_STRAIGHT:
-		motor_steer_set_velocity(0);
-		motor_drive_set_velocity(-speed);
-		break;
-	case DAGU_DIR_3_STOP_LEFT:
-		motor_steer_set_velocity(-255);
-		motor_drive_set_velocity(0);
-		break;
-	case DAGU_DIR_4_STOP_RIGHT:
-		motor_steer_set_velocity(255);
-		motor_drive_set_velocity(0);
-		break;
-	case DAGU_DIR_5_FORW_LEFT:
-		motor_steer_set_velocity(-255);
-		motor_drive_set_velocity(speed);
-		break;
-	case DAGU_DIR_6_FORW_RIGHT:
-		motor_steer_set_velocity(255);
-		motor_drive_set_velocity(speed);
-		break;
-	case DAGU_DIR_7_BACK_LEFT:
-		motor_steer_set_velocity(-255);
-		motor_drive_set_velocity(-speed);
-		break;
-	case DAGU_DIR_8_BACK_RIGHT:
-		motor_steer_set_velocity(255);
-		motor_drive_set_velocity(-speed);
-		break;
+		switch (direction) {
+		case DAGU_DIR_0_STOP_STRAIGHT:
+			motor_steer_set_velocity(0);
+			motor_drive_set_velocity(0);
+			break;
+		case DAGU_DIR_1_FORW_STRAIGHT:
+			motor_steer_set_velocity(0);
+			motor_drive_set_velocity(speed);
+			break;
+		case DAGU_DIR_2_BACK_STRAIGHT:
+			motor_steer_set_velocity(0);
+			motor_drive_set_velocity(-speed);
+			break;
+		case DAGU_DIR_3_STOP_LEFT:
+			motor_steer_set_velocity(-255);
+			motor_drive_set_velocity(0);
+			break;
+		case DAGU_DIR_4_STOP_RIGHT:
+			motor_steer_set_velocity(255);
+			motor_drive_set_velocity(0);
+			break;
+		case DAGU_DIR_5_FORW_LEFT:
+			motor_steer_set_velocity(-255);
+			motor_drive_set_velocity(speed);
+			break;
+		case DAGU_DIR_6_FORW_RIGHT:
+			motor_steer_set_velocity(255);
+			motor_drive_set_velocity(speed);
+			break;
+		case DAGU_DIR_7_BACK_LEFT:
+			motor_steer_set_velocity(-255);
+			motor_drive_set_velocity(-speed);
+			break;
+		case DAGU_DIR_8_BACK_RIGHT:
+			motor_steer_set_velocity(255);
+			motor_drive_set_velocity(-speed);
+			break;
+
+		case DAGU_DIR_F_EXT_ESCAPE:
+			escaped = 1;
+			break;
+		}
+	} else {
+		escaped = 0;
+		switch (command) {
+
+		case DAGU_EXT_REPORT:
+			uart_send("ver=1\ncap=\n");
+			break;
+
+		case DAGU_EXT_PROTOCOL_SWITCH_1:
+			handler = &handle_char_protocol_1;
+			break;
+
+		case DAGU_EXT_PROTOCOL_Q_BATT:
+			uart_send("batt="); uart_sendint(battlevel); uart_sendch('\n');
+			break;
+		}
 	}
 }
 
-static void handle_char(uint8_t command) {
+static void handle_char_protocol_1(uint8_t command) {
 
 	switch (command) {
 	case 'R': motor_steer_set_velocity( 255); break;
@@ -515,18 +560,15 @@ static void batt_sample() {
 
 static uint8_t batt_low_consistently(uint8_t threshold) {
 	uint8_t warn = 0;
-	uart_send("batt long check:");
 	for (uint8_t i = 0; i < 20; ++i) {
 
 		delay_100us(10);
 		batt_sample();
 
 		if (battlevel < threshold) {
-			uart_send(" batt="); uart_sendint(battlevel);
 			warn++;
 		}
 	}
-	uart_send(" done.\n");
 
 	return warn > 17;
 }
@@ -709,8 +751,7 @@ int main(void) {
 			uint8_t command = uart_getch();
 			led4off();
 
-//			handle_char(command);
-			handle_char_compat_dagu(command);
+			(*handler)(command);
 		}
 
 
@@ -736,7 +777,6 @@ int main(void) {
 		}
 
 		if (battlevel < battlowthreshold) {
-			uart_send("batt="); uart_sendint(battlevel); uart_sendch('\n');
 			if (batt_low_consistently(battlowthreshold)) {
 				if (battwarntogglestate) led3on(); else led3off();
 				motor_drive_set_velocity(0);
